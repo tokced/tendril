@@ -22,16 +22,82 @@ import logging
 import os
 import re
 import secrets
+import shutil
+import socket
 import ssl
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-STATE = Path(os.environ.get("TENDRIL_STATE", str(Path.home() / ".local/state/tendril")))
+def default_state() -> Path:
+    """各平台的用户级状态目录；TENDRIL_STATE 始终优先。"""
+    env = os.environ.get("TENDRIL_STATE")
+    if env:
+        return Path(env)
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / "Tendril"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Tendril"
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(base) / "tendril"
+
+
+def find_openssl() -> str | None:
+    """找 openssl：PATH 里没有时，看常见安装位置（Git for Windows / Homebrew）。"""
+    found = shutil.which("openssl")
+    if found:
+        return found
+    candidates: list[Path] = []
+    if os.name == "nt":
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if base:
+                candidates += [Path(base) / "Git" / "usr" / "bin" / "openssl.exe",
+                               Path(base) / "OpenSSL-Win64" / "bin" / "openssl.exe",
+                               Path(base) / "OpenSSL-Win32" / "bin" / "openssl.exe"]
+    elif sys.platform == "darwin":
+        candidates += [Path("/opt/homebrew/opt/openssl@3/bin/openssl"),
+                       Path("/usr/local/opt/openssl@3/bin/openssl")]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return None
+
+
+def local_ipv4s() -> list[str]:
+    """本机非回环 IPv4（用于 init-tls 默认 SAN）；不依赖 hostname -I。"""
+    ips: set[str] = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ips.add(info[4][0])
+    except OSError:
+        pass
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))   # 不发包，只让内核选出口地址
+            ips.add(s.getsockname()[0])
+        finally:
+            s.close()
+    except OSError:
+        pass
+    return sorted(ip for ip in ips if not ip.startswith("127."))[:2]
+
+
+def private_file(path: Path) -> None:
+    """尽力收紧权限：POSIX 用 0600；Windows 上 chmod 只影响只读位，靠目录 ACL。"""
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+STATE = default_state()
 DELIVER = Path(os.environ.get("TENDRIL_DELIVER", str(STATE / "deliver")))
 POLL_WAIT = float(os.environ.get("TENDRIL_POLL_WAIT", "25"))
 ONLINE_WINDOW = float(os.environ.get("TENDRIL_ONLINE_WINDOW", "15"))
@@ -49,25 +115,53 @@ def now() -> float:
 
 
 def init_tls(state: Path, sans: list[str]) -> int:
-    """生成本机自签证书。子端按「固定这张证书」验证母端，不做全局跳过校验。"""
+    """生成本机自签证书（Windows/macOS/Linux 通用）。
+
+    用配置文件而不是 -addext：macOS 自带 LibreSSL，不认 -addext。
+    子端按「固定这张证书」验证母端，不做全局跳过校验。
+    """
     cert, key = state / "mother-cert.pem", state / "mother-key.pem"
     if cert.is_file():
         print(f"证书已存在：{cert}（如需重签先删除它和 {key.name}）", file=sys.stderr)
     else:
+        openssl = find_openssl()
+        if not openssl:
+            print("找不到 openssl。装一个再跑 init-tls：\n"
+                  "  Windows: winget install ShiningLight.OpenSSL  或安装 Git for Windows\n"
+                  "  macOS:   brew install openssl@3\n"
+                  "  Linux:   发行版的 openssl 包\n"
+                  "或者用公网证书部署并加 --tls system，跳过自签证书。", file=sys.stderr)
+            return 1
         san = ",".join(f"IP:{s}" if s.replace(".", "").isdigit() else f"DNS:{s}" for s in sans)
-        cmd = ["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
-               "-nodes", "-keyout", str(key), "-out", str(cert), "-days", "3650",
-               "-subj", "/CN=tendril-mother", "-addext", f"subjectAltName={san}"]
-        done = subprocess.run(cmd, capture_output=True, text=True)
+        cfg = (f"[req]\ndistinguished_name=dn\nx509_extensions=v3\nprompt=no\n"
+               f"[dn]\nCN=tendril-mother\n"
+               f"[v3]\nsubjectAltName={san}\n"
+               f"basicConstraints=critical,CA:FALSE\n"
+               f"keyUsage=critical,digitalSignature,keyEncipherment\n"
+               f"extendedKeyUsage=serverAuth\n")
+        fd, cfg_path = tempfile.mkstemp(prefix="tendril-tls-", suffix=".cnf")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(cfg)
+            cmd = [openssl, "req", "-x509", "-newkey", "ec",
+                   "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+                   "-keyout", str(key), "-out", str(cert), "-days", "3650",
+                   "-config", cfg_path, "-extensions", "v3"]
+            done = subprocess.run(cmd, capture_output=True, text=True)
+        finally:
+            try:
+                os.unlink(cfg_path)
+            except OSError:
+                pass
         if done.returncode != 0:
             print("openssl 生成证书失败：\n" + done.stderr[-2000:], file=sys.stderr)
             return 1
-        key.chmod(0o600)
+        private_file(key)
         print(f"已生成：{cert}")
-    fp = subprocess.run(["openssl", "x509", "-in", str(cert), "-noout", "-fingerprint", "-sha256"],
-                        capture_output=True, text=True).stdout.strip()
+    fp = cert_fingerprint(cert.read_text(encoding="utf-8"))
+    pretty = ":".join(fp[i:i + 2] for i in range(0, len(fp), 2)).upper()
     print(f"SAN: {', '.join(sans)}")
-    print(f"指纹: {fp}")
+    print(f"指纹: SHA256 Fingerprint={pretty}")
     print(f"子端需要这张证书（配对时随邀请下发）：{cert}")
     return 0
 
@@ -256,9 +350,10 @@ cat > "$CA" <<'CERTEOF'
 {cert}
 CERTEOF
 
-curl -fsSL --cacert "$CA" "$URL/files/agent-linux" -o "$BIN.tmp"
-WANT=$(curl -fsSL --cacert "$CA" "$URL/files/agent-linux.sha256" | awk '{{print $1}}')
-HAVE=$(sha256sum "$BIN.tmp" | awk '{{print $1}}')
+sha() {{ if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{{print $1}}'; else shasum -a 256 "$1" | awk '{{print $1}}'; fi; }}
+curl -fsSL --cacert "$CA" "$URL/files/{bin_name}" -o "$BIN.tmp"
+WANT=$(curl -fsSL --cacert "$CA" "$URL/files/{bin_name}.sha256" | awk '{{print $1}}')
+HAVE=$(sha "$BIN.tmp")
 if [ "$WANT" != "$HAVE" ]; then rm -f "$BIN.tmp"; echo "校验和不匹配，已中止" >&2; exit 1; fi
 chmod +x "$BIN.tmp"; mv "$BIN.tmp" "$BIN"
 echo "校验通过：$HAVE"
@@ -288,9 +383,10 @@ for a in "${{ADDRS[@]:-}}"; do
   fi
 done
 
-curl -fsSL "${{RESOLVE[@]:-}}" "$URL/files/agent-linux" -o "$BIN.tmp"
-WANT=$(curl -fsSL "${{RESOLVE[@]:-}}" "$URL/files/agent-linux.sha256" | awk '{{print $1}}')
-HAVE=$(sha256sum "$BIN.tmp" | awk '{{print $1}}')
+sha() {{ if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{{print $1}}'; else shasum -a 256 "$1" | awk '{{print $1}}'; fi; }}
+curl -fsSL "${{RESOLVE[@]:-}}" "$URL/files/{bin_name}" -o "$BIN.tmp"
+WANT=$(curl -fsSL "${{RESOLVE[@]:-}}" "$URL/files/{bin_name}.sha256" | awk '{{print $1}}')
+HAVE=$(sha "$BIN.tmp")
 if [ "$WANT" != "$HAVE" ]; then rm -f "$BIN.tmp"; echo "校验和不匹配，已中止" >&2; exit 1; fi
 chmod +x "$BIN.tmp"; mv "$BIN.tmp" "$BIN"
 echo "校验通过：$HAVE"
@@ -377,7 +473,7 @@ class Store:
         self._mtime = self.devices_file.stat().st_mtime if self.devices_file.is_file() else 0.0
         if not self.token_file.is_file():
             self.token_file.write_text(secrets.token_urlsafe(32))
-            self.token_file.chmod(0o600)
+            private_file(self.token_file)
         self.token = self.token_file.read_text().strip()
 
     def maybe_reload(self) -> None:
@@ -413,7 +509,7 @@ class Store:
         with self.lock:
             tmp = self.devices_file.with_suffix(".tmp")
             tmp.write_text(json.dumps(self.devices, ensure_ascii=False, indent=1))
-            tmp.chmod(0o600)
+            private_file(tmp)
             os.replace(tmp, self.devices_file)
 
     def add(self, did: str, roots: list[str], allow_exec: bool, name: str = "") -> str:
@@ -1008,8 +1104,10 @@ class Handler(BaseHTTPRequestHandler):
         table = {
             "agent.exe": deliver / "tendril-agent.exe",
             "agent-linux": deliver / "tendril-agent-linux",
+            "agent-darwin": deliver / "tendril-agent-darwin",
             "agent.exe.sha256": deliver / "tendril-agent.exe.sha256",
             "agent-linux.sha256": deliver / "tendril-agent-linux.sha256",
+            "agent-darwin.sha256": deliver / "tendril-agent-darwin.sha256",
         }
         target = table.get(name)
         if not target or not target.is_file():
@@ -1032,9 +1130,12 @@ class Handler(BaseHTTPRequestHandler):
         if invite["exp"] < now():
             return self._json(410, {"error": "邀请已过期，请重新签发"})
         query = parse_qs(urlparse(self.path).query)
-        os_kind = (query.get("os") or ["windows"])[0]
-        if os_kind not in ("windows", "linux"):
-            return self._json(400, {"error": "os 只支持 windows / linux"})
+        os_kind = (query.get("os") or ["windows"])[0].lower()
+        if os_kind in ("macos", "mac", "osx"):
+            os_kind = "darwin"
+        if os_kind not in ("windows", "linux", "darwin"):
+            return self._json(400, {"error": "os 只支持 windows / linux / macos"})
+        bin_name = {"windows": "agent.exe", "linux": "agent-linux", "darwin": "agent-darwin"}[os_kind]
         url = invite["url"].rstrip("/")
         # 本机授权命令执行只能由这台机器上的人做：把 ?exec=1 写进脚本，等于"运行这一行"就是授权动作
         extra = " --allow-exec" if (query.get("exec") or [""])[0] in ("1", "true", "yes") else ""
@@ -1043,11 +1144,11 @@ class Handler(BaseHTTPRequestHandler):
             sep = "," if os_kind == "windows" else " "
             addrs = sep.join("'%s'" % a for a in (invite.get("addrs") or []))
             body = (PS_TEMPLATE_PUBLIC if os_kind == "windows" else SH_TEMPLATE_PUBLIC).format(
-                url=url, invite=token, addrs=addrs, extra=extra)
+                url=url, invite=token, addrs=addrs, extra=extra, bin_name=bin_name)
         else:
             cert = (invite.get("cert") or "").strip()
             body = (PS_TEMPLATE if os_kind == "windows" else SH_TEMPLATE).format(
-                url=url, invite=token, cert=cert, extra=extra)
+                url=url, invite=token, cert=cert, extra=extra, bin_name=bin_name)
         raw = body.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -1329,12 +1430,7 @@ def main(argv: list[str]) -> int:
     if args.cmd == "init-tls":
         sans = args.san
         if not sans:
-            sans = ["127.0.0.1", "localhost"]
-            try:
-                ip = subprocess.run(["hostname", "-I"], capture_output=True, text=True).stdout.split()
-                sans += [i for i in ip if ":" not in i][:2]
-            except OSError:
-                pass
+            sans = ["127.0.0.1", "localhost", *local_ipv4s()]
         return init_tls(store.state, sans)
     if args.cmd == "approve":
         dev = store.device(args.device)
@@ -1375,7 +1471,8 @@ def main(argv: list[str]) -> int:
         # 跳过校验的参数（-SkipCertificateCheck 是 PS 7+），-k 只用于取脚本这一步。
         kflag = "" if args.tls == "system" else "k"
         print(f'  Windows(PowerShell):  curl.exe -{kflag}fsSL {wc} | Out-String | iex')
-        print(f'  Linux / macOS:      curl -fsSL "{wc}?os=linux" | bash -s -- --daemon')
+        print(f'  Linux:              curl -fsSL "{wc}?os=linux" | bash -s -- --daemon')
+        print(f'  macOS:              curl -fsSL "{wc}?os=macos" | bash -s -- --daemon')
         print()
         print(f"有效期 {args.ttl} 秒；命令执行默认关闭，需要时在该机本地加 --allow-exec。")
         if args.full:

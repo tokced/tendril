@@ -20,6 +20,10 @@ func dataDir() (string, error) {
 	if d := os.Getenv("ProgramData"); d != "" {
 		return filepath.Join(d, "Tendril"), nil
 	}
+	// Linux: ~/.config；macOS: ~/Library/Application Support；Windows 用户模式: %AppData%
+	if d, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(d, "Tendril"), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

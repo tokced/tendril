@@ -1,4 +1,4 @@
-# Tendril（工作名，最终名待定）
+# Tendril
 
 **给 agent 装上的手和眼睛。** 一个大脑在母端（模型、上下文、记忆），多台异构设备只负责执行并回传事实——子端不思考、不保存上下文、不自主规划。
 
@@ -38,20 +38,34 @@ Tendril gives one agent hands on many machines. The brain (model, context, memor
 
 | 部分 | 状态 |
 |---|---|
-| 母端（Python，标准库） | ✅ 可用：设备台账、邀请、授权、暂停、任务、审计、TLS |
+| 母端 | ✅ Linux / macOS / Windows 可运行：设备台账、邀请、授权、暂停、任务、审计、TLS（自签证书需要 openssl；`--tls system` 走公网证书） |
 | Go 子端 | ✅ Windows 用户级/服务、Linux 已实机使用；macOS 仅交叉编译通过，未实机验收 |
 | Python 参考子端 | ✅ 可用于开发与联调（同样默认关闭命令执行） |
 | MCP stdio 桥（11 个工具，设备作为参数） | ✅ 可用 |
-| 46 条母端测试（真起母端 + 真起子端）+ Go 单测 | ✅ 通过 |
+| 46 条端到端测试 + 5 条平台适配测试 + Go 单测 | ✅ 通过（CI 在 Linux/macOS/Windows 上跑平台测试与三平台编译） |
 | 图形界面 / Hub 扩展面板 | ❌ 不在本仓库；母端已有 HTTP 接口，界面是可选的 |
 | 屏幕流、ConPTY、开机自启策略下发 | ❌ 未做 |
+
+## 平台支持
+
+母端和子端都不绑定 Linux：
+
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| 母端 | ✅ | ✅ | ✅（PowerShell 里 `python mother\server.py …`） |
+| Go 子端 | ✅ 实机使用 | ✅ 交叉编译；服务宿主需自行用 launchd/launchctl | ✅ 用户级 / 服务两种安装 |
+| 状态目录 | `~/.local/state/tendril`（跟随 `XDG_STATE_HOME`） | `~/Library/Application Support/Tendril` | `%LOCALAPPDATA%\Tendril` |
+| 自签证书 | `openssl` | 系统 LibreSSL 或 `brew install openssl@3` | Git for Windows 自带，或安装 OpenSSL |
+
+`TENDRIL_STATE` 可以覆盖状态目录（三平台一致）。macOS 的子端服务化（开机自启）目前需要自己写 launchd plist；Windows 有内置的 `--install-user` / `--install-service`。
 
 ## 快速开始
 
 完整步骤（含 Windows 服务、TLS、MCP 配置）见 [docs/quickstart.md](docs/quickstart.md)。
 
 ```bash
-# 母端（只需要 Python 3.12+，无第三方依赖）
+# 母端（Python 3.12+；自签证书需要 openssl）
+# Linux/macOS 用 python3；Windows 在 PowerShell 里用 python
 git clone <repo> && cd tendril
 python3 mother/server.py --state ~/.local/state/tendril init-tls \
     --san mother.example --san 192.168.1.10

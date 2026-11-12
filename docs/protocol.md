@@ -38,7 +38,7 @@
 | POST | `/agent/poll` | 长轮询取任务；请求体可带 `{os, identity, roots, host_mode, can_exec}` 作为心跳信息；无任务时按 `POLL_WAIT` 挂起 |
 | POST | `/agent/ack` | 确认收到任务（母端据此区分「没送到」与「在跑」） |
 | POST | `/agent/result` | 回传任务结果：`{task_id, ok, ...}`；执行期间可回传进度 |
-| GET | `/j/{sid}` | 一次性安装脚本（短邀请） |
+| GET | `/j/{sid}?os=windows\|linux\|macos` | 一次性安装脚本（短邀请；缺省 windows） |
 | GET | `/files/{name}` | 固定文件投递（子端二进制等） |
 
 鉴权：`X-Tendril-Device-Id` + 设备密钥（`Authorization: Bearer <secret>`）。设备未批准 `403`，已暂停 `403`，未知设备 `401`。

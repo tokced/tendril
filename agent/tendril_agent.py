@@ -98,8 +98,11 @@ def run_command(payload: dict, cancel: threading.Event) -> dict:
             continue
     if cancelled or timed_out:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
+            if hasattr(os, "killpg"):
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:  # Windows 上没有进程组：只能杀直接子进程
+                proc.kill()
+        except (ProcessLookupError, OSError):
             pass
     out, err = proc.communicate()
     out, err = out or b"", err or b""

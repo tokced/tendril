@@ -2,14 +2,19 @@
 
 ## 0. 前提
 
-| 角色 | 需要 |
-|---|---|
-| 母端 | Linux/macOS，Python 3.12+（只用标准库），`openssl` 命令（生成自签证书） |
+母端三平台都能跑；子端按目标机平台构建。
+
+| 角色 | Linux | macOS | Windows |
+|---|---|---|---|
+| 母端 | Python 3.12+ | Python 3.12+ | Python 3.12+（PowerShell 里 `python mother\server.py`） |
+| 自签证书 | 系统 `openssl` | LibreSSL 或 `brew install openssl@3` | Git for Windows 自带，或 `winget install ShiningLight.OpenSSL` |
+| 状态目录 | `~/.local/state/tendril` | `~/Library/Application Support/Tendril` | `%LOCALAPPDATA%\Tendril` |
+| Go 子端 | 实机可用 | 交叉编译后可用 | 用户级 / 服务安装 |
 | Go 子端 | 目标机无需运行时；构建需要 Go 1.26+（交叉编译 Windows/Linux/macOS） |
 | Python 子端（可选） | 目标机有 Python 3.10+，用于开发和联调 |
 | MCP 客户端 | Hermes / Claude Code / Codex / Cursor 等任意支持 stdio MCP 的客户端 |
 
-母端状态目录默认 `~/.local/state/tendril`，可用 `TENDRIL_STATE` 覆盖。
+状态目录按平台取默认值（见上表），三平台都可用 `TENDRIL_STATE` 覆盖。
 
 ## 1. 母端：证书 → 设备 → 启动
 
@@ -17,7 +22,7 @@
 REPO=/path/to/tendril
 STATE=~/.local/state/tendril
 
-# 自签证书；SAN 写子端将要连接的地址（DNS 名或 IP）
+# 自签证书；SAN 写子端将要连接的地址（DNS 名或 IP），不写则自动带 localhost + 本机 IPv4
 python3 "$REPO/mother/server.py" --state "$STATE" init-tls \
   --san mother.example --san 192.168.1.10
 
@@ -44,7 +49,8 @@ python3 "$REPO/mother/server.py" --state "$STATE" invite zen-pc \
 
 ```
 Windows:  curl.exe -kfsSL https://mother.example:8911/j/xxxxxxxx | Out-String | iex
-Linux:    curl -fsSL "https://mother.example:8911/j/xxxxxxxx?os=linux" | bash -s -- --daemon
+Linux:    curl -fsSL "https://mother.example:8911/j/xxxxxxxx?os=linux"  | bash -s -- --daemon
+macOS:    curl -fsSL "https://mother.example:8911/j/xxxxxxxx?os=macos"  | bash -s -- --daemon
 ```
 
 短链接由**正在运行的母端**提供，所以先 `serve` 再 `invite`。`-k` 只用于取安装脚本这一步；后续子端连接固定邀请里的证书。
@@ -55,9 +61,12 @@ Linux:    curl -fsSL "https://mother.example:8911/j/xxxxxxxx?os=linux" | bash -s
 
 ```bash
 cd agent/go
-go build -trimpath -o tendril-agent .                                  # 本机
-GOOS=windows GOARCH=amd64 go build -trimpath -o tendril-agent.exe .    # 交叉编译 Windows
+go build -trimpath -o tendril-agent .                                        # 本机（Linux/macOS）
+GOOS=windows GOARCH=amd64 go build -trimpath -o tendril-agent.exe .          # Windows
+GOOS=darwin  GOARCH=arm64 go build -trimpath -o tendril-agent-darwin .       # macOS (Apple Silicon)
 ```
+
+内网邀请的三条安装命令分别下载 `agent.exe` / `agent-linux` / `agent-darwin`（放在母端状态目录的 `deliver/`，并附 `.sha256`）。
 
 ### 直接运行（Linux/macOS/Windows 命令行）
 
