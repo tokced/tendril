@@ -1,0 +1,29 @@
+# 运行时状态、证书与密钥
+state/
+run/
+*.pem
+*.key
+*.token
+pending-invites.json
+
+# 构建产物
+tendril-agent
+tendril-agent.exe
+tendril-agent-linux
+dist/
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Go
+agent/go/agent
+*.test
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
