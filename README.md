@@ -29,7 +29,7 @@ Tendril gives one agent hands on many machines. The brain (model, context, memor
      只执行、只回传事实；不调用模型
 ```
 
-- 母端默认只监听 `127.0.0.1:8911`，控制接口用 `0600` 的控制令牌鉴权。
+- 母端默认只监听 `127.0.0.1:8911`，控制接口用控制令牌鉴权（POSIX `0600`；Windows 靠用户目录 ACL）。
 - 子端用一次性邀请接入：邀请里带地址、设备 id、密钥、母端证书与指纹，有有效期。
 - 每台设备独立状态：`approved`、`enabled`（暂停）、`allow_exec`、`roots`（允许访问的目录）。
 - 所有动作写 `audit.jsonl`：谁、何时、对哪台设备、提交了什么。
