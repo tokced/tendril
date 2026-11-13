@@ -42,7 +42,8 @@ Tendril gives one agent hands on many machines. The brain (model, context, memor
 | Go 子端 | ✅ Windows 用户级/服务、Linux 已实机使用；macOS 仅交叉编译通过，未实机验收 |
 | Python 参考子端 | ✅ 可用于开发与联调（同样默认关闭命令执行） |
 | MCP stdio 桥（11 个工具，设备作为参数） | ✅ 可用 |
-| 46 条端到端测试 + 5 条平台适配测试 + Go 单测 | ✅ 通过（CI 在 Linux/macOS/Windows 上跑平台测试与三平台编译） |
+| 46 条端到端 + 5 条平台适配 + 4 条常驻脚本检查 + Go 单测 | ✅ 通过（CI 在 Linux/macOS/Windows 上跑平台测试与三平台编译） |
+| 母端常驻 | ✅ Linux systemd / macOS launchd / Windows 计划任务（`deploy/install-mother-*`） |
 | 图形界面 / Hub 扩展面板 | ❌ 不在本仓库；母端已有 HTTP 接口，界面是可选的 |
 | 屏幕流、ConPTY、开机自启策略下发 | ❌ 未做 |
 
@@ -117,7 +118,10 @@ agent/go/                 # Go 子端（Windows/Linux/macOS）
 agent/tendril_agent.py   # Python 参考子端（开发/联调）
 mcp/tendril_mcp.py       # MCP stdio 桥（devices/exec/task/ls/read/write/…）
 skill/tendril/SKILL.md   # 给支持 skill 的客户端用的操作手册
+deploy/                   # 母端常驻安装脚本（systemd / launchd / 计划任务）
 tests/test_mother.py      # 46 条端到端测试（真进程 + 真 HTTP）
+tests/test_platform.py    # 5 条平台适配（状态目录/openssl/IP/证书）
+tests/test_deploy_assets.py  # 4 条常驻脚本结构检查
 docs/threat-model.md      # 先读这个
 docs/quickstart.md
 docs/protocol.md

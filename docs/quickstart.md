@@ -155,7 +155,47 @@ python3 mother/server.py --state ~/.local/state/tendril approve <device-id>
 
 另外 console 直接运行子端现在也必须加 `--allow-exec` 才允许命令执行；安装成服务/用户级时以安装时写入的配置为准（安装默认关闭）。
 
-## 8. 排错
+## 8. 母端常驻
+
+三种系统都是「登入后自启 + 崩溃重启」，脚本在 `deploy/`。默认参数：监听 `0.0.0.0:8911`，状态目录按平台默认值；可用 `TENDRIL_HOST` / `TENDRIL_PORT` / `TENDRIL_STATE` / `PYTHON` 覆盖。
+
+### Linux（systemd 用户服务）
+
+```bash
+./deploy/install-mother-linux.sh
+# 未登录也要常驻：
+loginctl enable-linger "$USER"
+# 日志 / 状态 / 停止
+journalctl --user -u tendril-mother -f
+systemctl --user restart tendril-mother
+```
+
+### macOS（launchd LaunchAgent）
+
+```bash
+./deploy/install-mother-macos.sh
+tail -f ~/Library/Logs/Tendril/mother.log
+# 卸载
+launchctl bootout "gui/$(id -u)/ai.tendril.mother" && rm ~/Library/LaunchAgents/ai.tendril.mother.plist
+```
+
+`PYTHON=/opt/homebrew/bin/python3 ./deploy/install-mother-macos.sh` 可指定解释器。
+
+### Windows（计划任务，登录后自启）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\install-mother-windows.ps1
+# 日志：%LOCALAPPDATA%\Tendril\mother.log
+# 卸载
+powershell -ExecutionPolicy Bypass -File deploy\install-mother-windows.ps1 -Uninstall
+```
+
+- 计划任务以当前用户运行，**不需要管理员**，但只在用户登录后启动；开机未登录就常驻需要把母端装成服务（NSSM/WinSW），本仓库不代做——那会把用户态状态目录换成服务账户，权限模型要重新评估。
+- 首次运行 Windows 防火墙会弹窗；只允许你实际使用的网段。
+
+三平台都别忘了：母端对公网暴露前必须走 TLS（自签+邀请固定，或 `--tls system`）。
+
+## 9. 排错
 
 | 现象 | 先查 |
 |---|---|

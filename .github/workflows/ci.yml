@@ -14,6 +14,8 @@ jobs:
           python-version: "3.12"
       - name: 端到端测试（真起母端 + 子端进程）
         run: python3 -m unittest tests.test_mother -v
+      - name: 母端常驻脚本检查
+        run: python3 -m unittest tests.test_deploy_assets -v
 
   platform:
     name: platform (${{ matrix.os }})
