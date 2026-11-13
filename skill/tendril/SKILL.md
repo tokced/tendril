@@ -1,6 +1,6 @@
 ---
 name: tendril
-description: Use when operating paired devices via Tendril.
+description: Use when operating paired devices via Tendriq.
 version: 1.0.0
 author: Tendril contributors
 license: MIT
@@ -9,12 +9,12 @@ metadata:
     tags: [remote-exec, devices, mcp]
 ---
 
-# 用 Tendril 操作远端设备
+# 用 Tendriq 卷须操作远端设备
 
 ## When to Use
 
 需要通过 MCP 工具 `tendril_*` 在**已配对设备**上读文件、写文件或执行命令时。操作本机请用内置的
-`terminal` / `read_file` / `write_file`，不要绕到 Tendril。
+`terminal` / `read_file` / `write_file`，不要绕到 Tendriq。
 
 ## 第一步永远是 devices
 

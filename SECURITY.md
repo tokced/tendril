@@ -1,6 +1,6 @@
 # 安全策略
 
-Tendril 是远程执行系统：子端能运行命令、读写文件，权限等于运行它的用户（Windows 服务模式为 `LocalSystem`）。安装前请读 [威胁模型](docs/threat-model.md)。
+Tendriq 卷须是远程执行系统：子端能运行命令、读写文件，权限等于运行它的用户（Windows 服务模式为 `LocalSystem`）。安装前请读 [威胁模型](docs/threat-model.md)。
 
 ## 报告问题
 
