@@ -60,8 +60,11 @@ class DeployAssetsTest(unittest.TestCase):
     def test_publish_agents_builds_three_targets_with_checksums(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {**os.environ, "TENDRIL_STATE": tmp}
+            # 子进程输出在 macOS runner 上出现过非 UTF-8 字节：显式指定编码并容错，
+            # 断言只依赖退出码与产物，不依赖日志文本。
             r = subprocess.run(["bash", str(DEPLOY / "publish-agents.sh")], cwd=ROOT, env=env,
-                               capture_output=True, text=True, timeout=300)
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=300)
             self.assertEqual(r.returncode, 0, r.stderr[-1500:])
             deliver = Path(tmp) / "deliver"
             for name in ("agent-linux", "agent.exe", "agent-darwin"):
