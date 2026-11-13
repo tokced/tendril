@@ -1,8 +1,10 @@
 """母端常驻脚本的结构检查（Linux/macOS 实跑安装脚本，Windows 只做内容检查）。"""
 from __future__ import annotations
 
+import hashlib
 import os
 import plistlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -53,6 +55,20 @@ class DeployAssetsTest(unittest.TestCase):
             self.assertIn("server.py", " ".join(args))
             self.assertIn("8913", args)
             self.assertIn("TENDRIL_STATE", data["EnvironmentVariables"])
+
+    @unittest.skipUnless(shutil.which("go"), "没有 Go，跳过子端投递构建")
+    def test_publish_agents_builds_three_targets_with_checksums(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "TENDRIL_STATE": tmp}
+            r = subprocess.run(["bash", str(DEPLOY / "publish-agents.sh")], cwd=ROOT, env=env,
+                               capture_output=True, text=True, timeout=300)
+            self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+            deliver = Path(tmp) / "deliver"
+            for name in ("agent-linux", "agent.exe", "agent-darwin"):
+                f = deliver / name
+                self.assertTrue(f.is_file(), name)
+                want = (deliver / f"{name}.sha256").read_text().split()[0]
+                self.assertEqual(want, hashlib.sha256(f.read_bytes()).hexdigest(), name)
 
     def test_windows_installer_has_expected_cmdlets(self):
         text = (DEPLOY / "install-mother-windows.ps1").read_text(encoding="utf-8")

@@ -66,7 +66,14 @@ GOOS=windows GOARCH=amd64 go build -trimpath -o tendril-agent.exe .          # W
 GOOS=darwin  GOARCH=arm64 go build -trimpath -o tendril-agent-darwin .       # macOS (Apple Silicon)
 ```
 
-内网邀请的三条安装命令分别下载 `agent.exe` / `agent-linux` / `agent-darwin`（放在母端状态目录的 `deliver/`，并附 `.sha256`）。
+内网邀请的三条安装命令分别下载 `agent.exe` / `agent-linux` / `agent-darwin`。先把它们构建到母端状态目录的 `deliver/`：
+
+```bash
+./deploy/publish-agents.sh
+# 产物：$TENDRIL_STATE/deliver/agent.exe|agent-linux|agent-darwin + .sha256
+```
+
+不跑这一步时，`invite` 打印的短链接会在下载子端时 404；这时可以改用 `invite --full` 拿到完整邀请串，自己把二进制拷到目标机。
 
 ### 直接运行（Linux/macOS/Windows 命令行）
 
