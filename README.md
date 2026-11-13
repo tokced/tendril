@@ -1,18 +1,110 @@
-# Tendril
+# Tendril 卷须
 
 [![ci](https://github.com/tokced/tendril/actions/workflows/ci.yml/badge.svg)](https://github.com/tokced/tendril/actions/workflows/ci.yml)
 
-**给 agent 装上的手和眼睛。** 一个大脑在母端（模型、上下文、记忆），多台异构设备只负责执行并回传事实——子端不思考、不保存上下文、不自主规划。
+[中文介绍](#中文介绍) · [English introduction](#english-introduction) · [架构](#架构) · [快速开始](#快速开始) · [安全默认值](#安全默认值)
 
-Tendril gives one agent hands on many machines. The brain (model, context, memory) stays on the mother host; each paired device runs a small executor that only does what it is told and reports facts back.
+## 中文介绍
 
-> ⚠️ **这是远程执行软件，不是沙箱。** 子端以运行它的用户身份（Windows 服务模式下是 `LocalSystem`）执行命令、读写授权目录。安装前请先读 [威胁模型](docs/threat-model.md)。只在你拥有或明确获授权的设备上部署。
+### 让 AI 的行动，不再止于一台电脑。
 
-## 它解决什么
+**一个大脑，多台设备。让你的 AI 从“告诉你怎么做”，走向“在你的机器上真正完成”。**
 
-- 一个 agent 需要摸到多台机器：家里的 Windows、NAS、Linux 小主机。
-- 不想给每台机器各配一个 MCP server（3 台 × 40 工具 = 工具列表和 token 成本都会失控）。
-- 需要「按设备授权 / 撤销 / 暂停 / 审计」，而不是把设备写死在配置里。
+你的设备分散在不同地方，运行着不同系统。但完成一件事，不应该要求你在它们之间来回切换、复制命令，再把结果搬回聊天窗口。
+
+Tendril 把这些设备接到同一个 agent 的行动范围内：**思考留在母端，执行延伸到各处。**
+
+模型、上下文与记忆集中在一处；设备上的轻量子端只负责接受指令、执行任务、回传结果。不需要在每台机器上再部署一套模型，也不需要让多个独立 agent 反复同步任务背景。
+
+像植物伸出的卷须——**大脑不必搬过去，行动可以延伸过去。**
+
+### 不只是看见设备，而是能在设备上做事
+
+通过 Tendril，agent 可以在获授权的设备上执行命令、浏览目录、读写和传输文件，并查询任务状态与结果。
+
+这意味着，你可以让同一个 agent 到另一台机器上检查运行环境、读取日志、修改文件，再根据实际返回继续处理，而不必由你充当两台机器之间的“复制粘贴接口”。
+
+**设备不再只是聊天中被提到的名字，而是可以实际调用的执行端。**
+
+### 设备可以增加，工具列表不必跟着复制
+
+Tendril 通过 MCP 提供一套统一工具，目标设备作为参数传入。
+
+接入另一台设备，不必再给模型重复挂上一整套同名工具。相同的调用方式，面向不同的机器。
+
+**扩展的是行动范围，不是重复的工具清单。**
+
+### 把执行交出去，把授权留在自己手里
+
+能够远程执行，不代表应该默认放开一切。
+
+Tendril 支持按设备批准、暂停和吊销接入；文件操作限定在授权目录内；命令执行需要母端与子端双方显式开启。设备通过有期限的一次性邀请接入，连接使用 TLS，并固定母端证书指纹。关键操作留下审计记录。
+
+**让 agent 能做事，也让你能决定：在哪台设备上，允许它做哪些事。**
+
+### 不把愿景冒充已经交付的能力
+
+Tendril 已提供母端服务、Go 子端和 MCP 桥。Windows 与 Linux 子端已有实机使用；macOS 子端已通过交叉编译，仍待实机验收。
+
+它不是远程桌面，不提供屏幕流；也不是安全沙箱——命令以子端运行账户的权限执行，文件访问的目录限制不等于命令执行隔离。请只在你拥有或明确获授权的设备上部署。
+
+**不必给每台机器一个大脑。<br>给同一个大脑，伸向多台机器的卷须。**
+
+**Tendril · 一个大脑，多台执行器。**
+
+---
+
+## English introduction
+
+### Give your AI reach beyond a single computer.
+
+**One brain. Many machines. Take your AI from telling you how to do something to getting it done on your own devices.**
+
+Your devices live in different places and run different operating systems. Getting something done should not mean switching between them, copying commands, and carrying the results back to a chat window.
+
+Tendril brings those devices within reach of a single agent: **reasoning stays on the mother host; execution reaches out to your machines.**
+
+The model, context, and memory stay in one place. A lightweight executor on each device accepts instructions, runs tasks, and returns results. There is no need to deploy a model on every machine or keep separate agents synchronized on the same task.
+
+Like the tendrils of a climbing plant—**the brain stays put. Its reach keeps growing.**
+
+### Not just seeing your devices. Getting things done on them.
+
+Through Tendril, an agent can execute commands on authorized devices, browse directories, read, write, and transfer files, and retrieve task status and results.
+
+The same agent can inspect the environment on another machine, read its logs, edit files, and continue working from the results it actually receives—without making you the copy-and-paste interface between computers.
+
+**A device is no longer just a name in a conversation. It becomes an executor the agent can actually use.**
+
+### Add devices, not duplicate tool lists.
+
+Tendril exposes one shared set of tools through MCP, with the target device passed as a parameter.
+
+Connecting another device does not require registering another copy of the same tools with the model. The same interface works across different machines.
+
+**Grow the agent's reach, not a list of duplicate tools.**
+
+### Delegate execution. Keep control of authorization.
+
+Remote execution should not mean unrestricted access by default.
+
+Tendril supports per-device approval, suspension, and revocation. File operations stay within authorized directories. Command execution must be explicitly enabled on both the mother host and the device. Devices join through expiring, single-use invitations, connect over TLS with the mother host's certificate fingerprint pinned, and leave audit records for key operations.
+
+**Give your agent the ability to act—and keep the decision about where it may act and what you enable.**
+
+### A clear line between what works and what comes next.
+
+Tendril already provides the mother service, Go executors, and an MCP bridge. Windows and Linux executors have been used on real machines. The macOS executor has been cross-compiled successfully but still awaits real-device validation.
+
+Tendril is not a remote desktop and does not provide screen streaming. It is not a security sandbox: commands run with the executor account's privileges, and file-access directory restrictions do not isolate command execution. Deploy it only on devices you own or are explicitly authorized to manage.
+
+**You do not need a brain on every machine.<br>Give one brain tendrils that reach them all.**
+
+**Tendril · One brain. Many executors.**
+
+---
+
+> ⚠️ **这是远程执行软件，不是沙箱 / Remote execution software, not a sandbox.** 子端以运行它的用户身份（Windows 服务模式下是 `LocalSystem`）执行命令、读写授权目录。The executor runs commands with its account's privileges (`LocalSystem` in Windows service mode). 安装前请先读 / Read the [威胁模型 / threat model](docs/threat-model.md) before installing.
 
 ## 架构
 
