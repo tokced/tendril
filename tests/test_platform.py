@@ -34,7 +34,7 @@ class PlatformTest(unittest.TestCase):
         self.assertTrue(p.is_absolute())
         if os.name == "nt":
             self.assertEqual(p.name, "Tendril")
-            self.assertIn("AppData", str(p).lower().replace("\\", "/"))
+            self.assertIn("appdata", str(p).lower().replace("\\", "/"))
         elif sys.platform == "darwin":
             self.assertIn("Library/Application Support", str(p))
         else:

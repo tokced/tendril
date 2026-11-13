@@ -110,6 +110,19 @@ TASK_GRACE = float(os.environ.get("TENDRIL_TASK_GRACE", "30"))
 ACK_GRACE = float(os.environ.get("TENDRIL_ACK_GRACE", "6"))
 
 
+def _utf8_streams() -> None:
+    """Windows 控制台默认 cp1252/cp936：打印中文会 UnicodeEncodeError。
+    尽量切到 UTF-8；切不了就至少别让输出崩掉。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
+_utf8_streams()
+
+
 def now() -> float:
     return time.time()
 

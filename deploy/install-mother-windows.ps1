@@ -46,7 +46,7 @@ New-Item -ItemType Directory -Force -Path $State | Out-Null
 $log = Join-Path $State "mother.log"
 
 # 计划任务不会重定向输出：在 PowerShell 里起进程并把 stdout/stderr 追加到日志。
-$inner = "`$env:TENDRIL_STATE='$State'; `$env:PYTHONUNBUFFERED='1'; " +
+$inner = "`$env:TENDRIL_STATE='$State'; `$env:PYTHONUNBUFFERED='1'; `$env:PYTHONUTF8='1'; " +
          "& '$($pythonCmd.Source)' '$server' serve --host '$BindHost' --port $Port " +
          "*>> '$log'"
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
