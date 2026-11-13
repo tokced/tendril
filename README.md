@@ -1,5 +1,7 @@
 # Tendril
 
+[![ci](https://github.com/tokced/tendril/actions/workflows/ci.yml/badge.svg)](https://github.com/tokced/tendril/actions/workflows/ci.yml)
+
 **给 agent 装上的手和眼睛。** 一个大脑在母端（模型、上下文、记忆），多台异构设备只负责执行并回传事实——子端不思考、不保存上下文、不自主规划。
 
 Tendril gives one agent hands on many machines. The brain (model, context, memory) stays on the mother host; each paired device runs a small executor that only does what it is told and reports facts back.
@@ -53,8 +55,8 @@ Tendril gives one agent hands on many machines. The brain (model, context, memor
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
-| 母端 | ✅ | ✅ | ✅（PowerShell 里 `python mother\server.py …`） |
-| Go 子端 | ✅ 实机使用 | ✅ 交叉编译；服务宿主需自行用 launchd/launchctl | ✅ 用户级 / 服务两种安装 |
+| 母端 | ✅ | ✅（CI 平台矩阵） | ✅（CI 平台矩阵；PowerShell 里 `python mother\server.py …`） |
+| Go 子端 | ✅ 实机使用 | ✅ 交叉编译 + CI 构建；未实机验收，服务宿主需自行用 launchd | ✅ 作者现网在用用户级/服务安装；公开树构建经 CI |
 | 状态目录 | `~/.local/state/tendril`（跟随 `XDG_STATE_HOME`） | `~/Library/Application Support/Tendril` | `%LOCALAPPDATA%\Tendril` |
 | 自签证书 | `openssl` | 系统 LibreSSL 或 `brew install openssl@3` | Git for Windows 自带，或安装 OpenSSL |
 
