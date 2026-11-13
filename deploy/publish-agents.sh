@@ -37,7 +37,7 @@ build windows amd64 agent.exe
 build darwin arm64  agent-darwin
 
 echo
-echo "已写入 $out："
+echo "已写入 ${out}："
 ls -l "$out"/agent* | awk '{print "  " $5 "  " $9}'
 echo
 echo "现在可以生成一键邀请：python3 mother/server.py invite <device> --url https://<mother>:8911"
